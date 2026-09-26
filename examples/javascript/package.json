@@ -1,0 +1,16 @@
+{
+  "name": "dafo-swarm-examples",
+  "private": true,
+  "type": "module",
+  "description": "Node.js examples for the DAFO Swarm OpenAI-compatible API",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "chat": "node chat.mjs",
+    "stream": "node stream.mjs",
+    "knowledge": "node knowledge.mjs",
+    "office": "node office-documents.mjs"
+  },
+  "dependencies": {
+    "openai": "^4.60.0"
+  }
+}

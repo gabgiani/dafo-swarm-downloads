@@ -1,0 +1,5 @@
+subject,predicate,object,content
+Line 3,plc_supplier,Siemens,"Line 3 uses a Siemens S7-1500 PLC. Contact: Carlos Gómez, carlos@example.com."
+Line 3,maintenance_window,Friday 06:00,Preventive maintenance of line 3 runs every Friday from 06:00 to 08:00.
+ACME Corp,payment_terms,60 days,ACME pays 60 days from invoice date with a 2% discount for early payment.
+Part A-100,material,Aluminium 6061-T6,"A-100 is machined from 6061-T6 bar, tolerance ±0.02 mm, anodised black."
