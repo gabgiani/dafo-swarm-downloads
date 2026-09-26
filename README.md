@@ -20,7 +20,7 @@ This repository contains the public **installers** and their **checksums**, plus
 | Windows 11 / Server | coming soon | CUDA / CPU | — |
 | Linux x86_64 CPU only | coming soon | CPU | — |
 
-Every release contains the packages and a `.sha256` file for each one. Release tags follow `v0.1.0-YYYYMMDD.N`.
+Releases starting with `v0.1.0-20260926.3` include a `.sha256` file for each package. For every release, the checksum is also in the `sha256` field of the manifests below. Release tags follow `v0.1.0-YYYYMMDD.N`.
 
 ### Always download the latest version
 
