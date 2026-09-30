@@ -7,6 +7,8 @@ import sys
 from swarm import active_model, client
 
 prompt = sys.argv[1] if len(sys.argv) > 1 else "Write a short paragraph about predictive maintenance."
+print("Question:", prompt, flush=True)
+print("Answer: ", end="", flush=True)
 stream = client.chat.completions.create(
     model=active_model(),
     messages=[{"role": "user", "content": prompt}],

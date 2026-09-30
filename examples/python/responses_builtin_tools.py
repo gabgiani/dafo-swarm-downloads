@@ -7,13 +7,12 @@ knowledge and when to read or change shared Office documents.
 import os
 import sys
 
-import requests
+from swarm import SWARM_URL, active_model, enabled_agents, session
 
-from swarm import SWARM_URL, active_model
-
-agents = requests.get(f"{SWARM_URL}/v1/agents", timeout=30).json()["data"]
+agents = enabled_agents()
 agent = os.environ.get("AGENT") or (agents[0]["id"] if agents else None)
 prompt = sys.argv[1] if len(sys.argv) > 1 else "What do you know about line 3?"
+print("Question:", prompt, flush=True)
 
 body = {
     "model": active_model(),
@@ -30,10 +29,12 @@ body = {
         "require_approval": "never",
     }],
 }
+if os.environ.get("SWARM_READ_ONLY") == "1":
+    body["tools"][0]["allowed_tools"] = ["search_knowledge", "list_knowledge", "list_office_documents", "read_office_document"]
 if agent:
     body["agent"] = agent
 
-response = requests.post(f"{SWARM_URL}/v1/responses", json=body, timeout=900)
+response = session.post(f"{SWARM_URL}/v1/responses", json=body, timeout=900)
 response.raise_for_status()
 for item in response.json()["output"]:
     if item["type"] == "mcp_call":
