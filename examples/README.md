@@ -6,6 +6,16 @@ Runnable clients for the DAFO Swarm API. Every example reads `SWARM_URL`, which 
 export SWARM_URL=http://127.0.0.1:43100   # the coordinator
 ```
 
+For the Python examples, run from their folder:
+
+```bash
+cd examples/python
+python3 -m pip install -r requirements.txt
+python3 chat.py "Explain OEE in two sentences."
+```
+
+The script asks for your API token if `SWARM_API_KEY` or `SWARM_API_TOKEN` is not set. Create it in the dashboard under **Settings > Server > Account > API tokens**. Paste it at the hidden prompt and press Enter; nothing will appear while you type. The script uses the token only for that run. You can also set `SWARM_API_KEY` in your environment to avoid the prompt on each run.
+
 | Folder | Requirements | Contents |
 |---|---|---|
 | [curl](curl) | `curl`, `jq` | One script per endpoint |
