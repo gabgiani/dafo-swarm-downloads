@@ -29,7 +29,7 @@ def active_model() -> str:
         raise SystemExit(f"Cannot reach DAFO Swarm at {SWARM_URL}. Start the coordinator or set SWARM_URL.") from error
     except APIStatusError as error:
         if error.status_code == 401:
-            raise SystemExit("The API token was rejected. Create a new token in Settings > Server > Account.") from error
+            raise SystemExit("The API token was rejected. Create a new token in Settings > API > API Access.") from error
         raise SystemExit(f"DAFO Swarm returned HTTP {error.status_code}: {error.message}") from error
     if not models:
         raise SystemExit("The swarm has no active model yet. Select one in the dashboard.")
@@ -45,5 +45,5 @@ def enabled_agents() -> list[dict]:
         raise SystemExit(f"Cannot reach DAFO Swarm at {SWARM_URL}. Start the coordinator or set SWARM_URL.") from error
     except requests.exceptions.HTTPError as error:
         if response.status_code == 401:
-            raise SystemExit("The API token was rejected. Create a new token in Settings > Server > Account.") from error
+            raise SystemExit("The API token was rejected. Create a new token in Settings > API > API Access.") from error
         raise SystemExit(f"DAFO Swarm returned HTTP {response.status_code}: {response.text}") from error
