@@ -22,7 +22,7 @@ py examples\python\run.py
 
 The menu asks for `SWARM_API_KEY` once if it is absent, then passes it to each script for that menu session. It marks the knowledge import that writes facts and asks for confirmation. The built-in tools option uses read-only mode, and the Office option lists documents by default.
 
-Create a token in the dashboard under **Settings > Server > Account > API tokens**. To run individual scripts without another prompt, set `SWARM_API_KEY` once in your terminal session:
+Create a token in the dashboard under **Settings > API > API Access**. To run individual scripts without another prompt, set `SWARM_API_KEY` once in your terminal session:
 
 ```bash
 # macOS / Linux (input is hidden)

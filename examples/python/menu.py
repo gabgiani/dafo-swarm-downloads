@@ -32,7 +32,7 @@ def run(script, *args, extra_env=None):
 def main():
     print(f"DAFO Swarm Python examples | {URL}")
     if not os.environ.get("SWARM_API_KEY"):
-        print("Create a token in Settings > Server > Account > API tokens.")
+        print("Create a token in Settings > API > API Access.")
         token = getpass.getpass("SWARM_API_KEY (hidden; once for this menu): ").strip()
         if not token:
             print("No token entered.", file=sys.stderr)

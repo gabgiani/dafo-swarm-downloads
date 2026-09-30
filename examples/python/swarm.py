@@ -10,8 +10,8 @@ SWARM_URL = os.environ.get("SWARM_URL", "http://127.0.0.1:43100").rstrip("/")
 SWARM_API_KEY = os.environ.get("SWARM_API_KEY")
 if not SWARM_API_KEY:
     if not sys.stdin.isatty():
-        raise SystemExit("Set SWARM_API_KEY to a token from Settings > Server > Account > API tokens.")
-    print("Create a token in DAFO Swarm: Settings > Server > Account > API tokens.")
+        raise SystemExit("Set SWARM_API_KEY to a token from Settings > API > API Access.")
+    print("Create a token in DAFO Swarm: Settings > API > API Access.")
     SWARM_API_KEY = getpass.getpass("Paste your API token (hidden), then press Enter: ").strip()
     if not SWARM_API_KEY:
         raise SystemExit("No token entered. Run the example again and paste your API token.")
