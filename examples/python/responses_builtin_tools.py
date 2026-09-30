@@ -4,20 +4,25 @@ knowledge and when to read or change shared Office documents.
     python responses_builtin_tools.py "Remember that line 3 maintenance is every Friday at 6am."
     python responses_builtin_tools.py "Read Costos.xlsx and ask Informe.docx to add a paragraph with the total."
 """
+import argparse
 import os
 import sys
 
-import requests
+from swarm import SWARM_URL, active_model, enabled_agents, session
 
-from swarm import SWARM_URL, active_model
-
-agents = requests.get(f"{SWARM_URL}/v1/agents", timeout=30).json()["data"]
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("prompt", nargs="?", default="What do you know about line 3?")
+parser.add_argument("--max-output-tokens", type=int, default=300, help="Maximum answer tokens (default: 300).")
+args = parser.parse_args()
+agents = enabled_agents()
 agent = os.environ.get("AGENT") or (agents[0]["id"] if agents else None)
-prompt = sys.argv[1] if len(sys.argv) > 1 else "What do you know about line 3?"
+prompt = args.prompt
+print("Question:", prompt, flush=True)
 
 body = {
     "model": active_model(),
     "input": prompt,
+    "max_output_tokens": args.max_output_tokens,
     "max_tool_calls": 6,
     "tools": [{
         "type": "mcp",
@@ -30,13 +35,19 @@ body = {
         "require_approval": "never",
     }],
 }
+if os.environ.get("SWARM_READ_ONLY") == "1":
+    body["tools"][0]["allowed_tools"] = ["search_knowledge", "list_knowledge", "list_office_documents", "read_office_document"]
 if agent:
     body["agent"] = agent
 
-response = requests.post(f"{SWARM_URL}/v1/responses", json=body, timeout=900)
+response = session.post(f"{SWARM_URL}/v1/responses", json=body, timeout=900)
 response.raise_for_status()
-for item in response.json()["output"]:
+result = response.json()
+for item in result["output"]:
     if item["type"] == "mcp_call":
         print(f"tool {item['name']} {item['arguments']}\n  -> {item.get('output') or item.get('error')}")
     elif item["type"] == "message":
         print("\n" + item["content"][0]["text"])
+print(f"[status: {result.get('status', 'unknown')}]")
+if result.get("status") == "incomplete":
+    print("Answer reached the output limit; retry with --max-output-tokens 512 if the model context allows it.", file=sys.stderr)

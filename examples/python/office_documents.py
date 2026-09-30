@@ -8,8 +8,9 @@ import json
 import os
 import sys
 
-import requests
 import urllib3
+
+from swarm import session
 
 # The add-in certificate is trusted by the macOS Keychain, not by Python; the host only listens on localhost.
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -17,7 +18,7 @@ OFFICE_URL = os.environ.get("OFFICE_URL", "https://localhost:43110")
 
 
 def request(target: str, kind: str, arguments: dict) -> dict:
-    response = requests.post(
+    response = session.post(
         f"{OFFICE_URL}/api/swarm/documents/request",
         json={"target": target, "kind": kind, "source": "Python example", "arguments": arguments},
         verify=False,
@@ -29,9 +30,14 @@ def request(target: str, kind: str, arguments: dict) -> dict:
     return body["result"]
 
 
-documents = requests.get(f"{OFFICE_URL}/api/swarm/documents", verify=False, timeout=30).json()["data"]
+response = session.get(f"{OFFICE_URL}/api/swarm/documents", verify=False, timeout=30)
+response.raise_for_status()
+documents = response.json()["data"]
 for document in documents:
     print(f"{document['name']:40} {document['app']:6} {'open' if document['online'] else 'closed'}")
+
+if "--list-only" in sys.argv[1:]:
+    raise SystemExit(0)
 
 target = sys.argv[1] if len(sys.argv) > 1 else next((d["name"] for d in documents if d["online"]), None)
 if not target:
