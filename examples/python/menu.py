@@ -4,11 +4,12 @@ Launch with run.py so dependencies come from the local virtual environment.
 The API token is requested once per menu session when SWARM_API_KEY is unset.
 """
 
-import getpass
 import os
 from pathlib import Path
 import subprocess
 import sys
+
+from credentials import api_key
 
 
 HERE = Path(__file__).resolve().parent
@@ -31,13 +32,11 @@ def run(script, *args, extra_env=None):
 
 def main():
     print(f"DAFO Swarm Python examples | {URL}")
-    if not os.environ.get("SWARM_API_KEY"):
-        print("Create a token in Settings > API > API Access.")
-        token = getpass.getpass("SWARM_API_KEY (hidden; once for this menu): ").strip()
-        if not token:
-            print("No token entered.", file=sys.stderr)
-            return 1
-        os.environ["SWARM_API_KEY"] = token
+    try:
+        os.environ["SWARM_API_KEY"] = api_key(URL)
+    except RuntimeError as error:
+        print(f"Error: {error}", file=sys.stderr)
+        return 1
 
     while True:
         print("1  Chat")

@@ -1,20 +1,16 @@
 """Shared connection settings for the examples."""
-import getpass
 import os
-import sys
 
 from openai import APIConnectionError, APIStatusError, OpenAI
 import requests
 
+from credentials import api_key
+
 SWARM_URL = os.environ.get("SWARM_URL", "http://127.0.0.1:43100").rstrip("/")
-SWARM_API_KEY = os.environ.get("SWARM_API_KEY")
-if not SWARM_API_KEY:
-    if not sys.stdin.isatty():
-        raise SystemExit("Set SWARM_API_KEY to a token from Settings > API > API Access.")
-    print("Create a token in DAFO Swarm: Settings > API > API Access.")
-    SWARM_API_KEY = getpass.getpass("Paste your API token (hidden), then press Enter: ").strip()
-    if not SWARM_API_KEY:
-        raise SystemExit("No token entered. Run the example again and paste your API token.")
+try:
+    SWARM_API_KEY = api_key(SWARM_URL)
+except RuntimeError as error:
+    raise SystemExit(error) from error
 
 # Distributed generation can take minutes for long answers.
 client = OpenAI(base_url=f"{SWARM_URL}/v1", api_key=SWARM_API_KEY, timeout=600)

@@ -20,7 +20,7 @@ py examples\python\run.py
 
 `run.py` creates `examples/python/.venv`, installs the example dependencies there, then starts the menu using that environment. On later runs it reuses the environment and only installs again if `requirements.txt` changed. Use `python3 examples/python/run.py --install-only` when preparing a machine without opening the menu.
 
-The menu asks for `SWARM_API_KEY` once if it is absent, then passes it to each script for that menu session. It marks the knowledge import that writes facts and asks for confirmation. The built-in tools option uses read-only mode, and the Office option lists documents by default.
+The first run asks for `SWARM_API_KEY` once, validates it and saves it as `examples/python/.env`. Later menu and individual-script runs reuse it automatically. The file is ignored by Git and is private to the current user on macOS/Linux. It marks the knowledge import that writes facts and asks for confirmation. The built-in tools option uses read-only mode, and the Office option lists documents by default.
 
 Create a token in the dashboard under **Settings > API > API Access**. To run individual scripts without another prompt, set `SWARM_API_KEY` once in your terminal session:
 
@@ -36,7 +36,7 @@ $env:SWARM_API_KEY = Read-Host "API token"
 examples/python/.venv/Scripts/python.exe examples/python/menu.py
 ```
 
-The variable lasts for that terminal session. The menu does not write the token to disk. You can also launch an individual script without setting the variable; it will ask for the token at a hidden prompt. Chat prints `finish: stop` when the model ends normally and `finish: length` when it reaches the output limit. For a longer answer, run `python3 examples/python/chat.py --max-tokens 512 "Explain OEE in detail."` if the model has enough free context.
+The environment variable takes priority over the saved key and lasts for that terminal session. To rotate a locally saved key, delete `examples/python/.env` and run the menu again. Chat prints `finish: stop` when the model ends normally and `finish: length` when it reaches the output limit. For a longer answer, run `python3 examples/python/chat.py --max-tokens 512 "Explain OEE in detail."` if the model has enough free context.
 
 | Folder | Requirements | Contents |
 |---|---|---|
