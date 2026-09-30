@@ -14,6 +14,8 @@ python3 -m pip install -r requirements.txt
 python3 chat.py "Explain OEE in two sentences."
 ```
 
+Chat prints `finish: stop` when the model ends normally and `finish: length` when it reaches the output limit. For a longer answer, run `python3 chat.py --max-tokens 512 "Explain OEE in detail."` if the model has enough free context.
+
 The script asks for your API token if `SWARM_API_KEY` or `SWARM_API_TOKEN` is not set. Create it in the dashboard under **Settings > Server > Account > API tokens**. Paste it at the hidden prompt and press Enter; nothing will appear while you type. The script uses the token only for that run. You can also set `SWARM_API_KEY` in your environment to avoid the prompt on each run.
 
 | Folder | Requirements | Contents |
