@@ -7,7 +7,7 @@ from openai import APIConnectionError, APIStatusError, OpenAI
 import requests
 
 SWARM_URL = os.environ.get("SWARM_URL", "http://127.0.0.1:43100").rstrip("/")
-SWARM_API_KEY = os.environ.get("SWARM_API_KEY") or os.environ.get("SWARM_API_TOKEN")
+SWARM_API_KEY = os.environ.get("SWARM_API_KEY")
 if not SWARM_API_KEY:
     if not sys.stdin.isatty():
         raise SystemExit("Set SWARM_API_KEY to a token from Settings > Server > Account > API tokens.")

@@ -6,22 +6,42 @@ Runnable clients for the DAFO Swarm API. Every example reads `SWARM_URL`, which 
 export SWARM_URL=http://127.0.0.1:43100   # the coordinator
 ```
 
-For the Python examples, run from their folder:
+For the Python examples, run one command from the repository root:
 
 ```bash
-cd examples/python
-python3 -m pip install -r requirements.txt
-python3 chat.py "Explain OEE in two sentences."
+# macOS / Linux
+python3 examples/python/run.py
 ```
 
-Chat prints `finish: stop` when the model ends normally and `finish: length` when it reaches the output limit. For a longer answer, run `python3 chat.py --max-tokens 512 "Explain OEE in detail."` if the model has enough free context.
+```powershell
+# Windows PowerShell
+py examples\python\run.py
+```
 
-The script asks for your API token if `SWARM_API_KEY` or `SWARM_API_TOKEN` is not set. Create it in the dashboard under **Settings > Server > Account > API tokens**. Paste it at the hidden prompt and press Enter; nothing will appear while you type. The script uses the token only for that run. You can also set `SWARM_API_KEY` in your environment to avoid the prompt on each run.
+`run.py` creates `examples/python/.venv`, installs the example dependencies there, then starts the menu using that environment. On later runs it reuses the environment and only installs again if `requirements.txt` changed. Use `python3 examples/python/run.py --install-only` when preparing a machine without opening the menu.
+
+The menu asks for `SWARM_API_KEY` once if it is absent, then passes it to each script for that menu session. It marks the knowledge import that writes facts and asks for confirmation. The built-in tools option uses read-only mode, and the Office option lists documents by default.
+
+Create a token in the dashboard under **Settings > Server > Account > API tokens**. To run individual scripts without another prompt, set `SWARM_API_KEY` once in your terminal session:
+
+```bash
+# macOS / Linux (input is hidden)
+read -rs SWARM_API_KEY; export SWARM_API_KEY; echo
+examples/python/.venv/bin/python examples/python/chat.py "Explain OEE in two sentences."
+```
+
+```powershell
+# Windows PowerShell
+$env:SWARM_API_KEY = Read-Host "API token"
+examples/python/.venv/Scripts/python.exe examples/python/menu.py
+```
+
+The variable lasts for that terminal session. The menu does not write the token to disk. You can also launch an individual script without setting the variable; it will ask for the token at a hidden prompt. Chat prints `finish: stop` when the model ends normally and `finish: length` when it reaches the output limit. For a longer answer, run `python3 examples/python/chat.py --max-tokens 512 "Explain OEE in detail."` if the model has enough free context.
 
 | Folder | Requirements | Contents |
 |---|---|---|
 | [curl](curl) | `curl`, `jq` | One script per endpoint |
-| [python](python) | Python 3.9+, `pip install -r requirements.txt` | OpenAI SDK, tool calling, agents, knowledge loading, built-in tools, Office documents |
+| [python](python) | Python 3.9+, `python run.py` | OpenAI SDK, tool calling, agents, knowledge loading, built-in tools, Office documents |
 | [javascript](javascript) | Node.js 20+, `npm install` | OpenAI SDK, streaming with `fetch`, knowledge, Office documents |
 
 Scripts that **write** data create agents or knowledge facts on the coordinator:
