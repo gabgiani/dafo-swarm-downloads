@@ -2,6 +2,9 @@
 # Responses API with a text file attached. Usage: ./06-responses-file.sh notes.txt "question"
 set -euo pipefail
 SWARM_URL=${SWARM_URL:-http://127.0.0.1:43100}
+: "${SWARM_API_KEY:?Set SWARM_API_KEY to an API token from Settings > API > API Access}"
+# Every call to the swarm carries the API token.
+curl() { command curl -H "Authorization: Bearer $SWARM_API_KEY" "$@"; }
 FILE=${1:?usage: $0 file.(txt|md|csv|json|pdf) [question]}
 QUESTION=${2:-"Summarise this file in five bullet points."}
 MODEL=$(curl -sf "$SWARM_URL/v1/models" | jq -r '.data[0].id')

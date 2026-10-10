@@ -2,11 +2,13 @@
 //   node knowledge.mjs                  # first enabled agent
 //   AGENT=agent-... node knowledge.mjs
 const SWARM_URL = (process.env.SWARM_URL ?? "http://127.0.0.1:43100").replace(/\/$/, "");
+const SWARM_API_KEY = process.env.SWARM_API_KEY;
+if (!SWARM_API_KEY) throw new Error("Set SWARM_API_KEY to an API token from Settings > API > API Access.");
 
 async function api(path, init) {
   const response = await fetch(`${SWARM_URL}${path}`, {
     ...init,
-    headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+    headers: { "content-type": "application/json", authorization: `Bearer ${SWARM_API_KEY}`, ...(init?.headers ?? {}) },
   });
   const text = await response.text();
   if (!response.ok) throw new Error(`${path}: ${response.status} ${text}`);

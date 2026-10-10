@@ -1,6 +1,6 @@
 # DAFO Swarm HTTP API reference
 
-This reference covers version `0.1.0-20260926.3` and later.
+This reference covers version `0.1.0-20261010.11` and later.
 
 Every DAFO Swarm node serves HTTP on port **43100** (`http://127.0.0.1:43100` by default). Send inference and management requests to the **coordinator**: the node that created the room. It plans the work, runs the layers it owns, and forwards the rest to the other machines.
 
@@ -14,9 +14,11 @@ Examples use `curl` and `jq`, with:
 
 ```bash
 export SWARM_URL=http://127.0.0.1:43100
+export SWARM_API_KEY=<token from Settings → API → API Access>
+AUTH="Authorization: Bearer $SWARM_API_KEY"
 ```
 
-Runnable versions of every example are in [`../examples`](../examples).
+Runnable versions of every example are in [`../examples`](../examples). How agents delegate to each other and share data is explained in [AGENTS.md](AGENTS.md).
 
 ---
 
@@ -37,8 +39,10 @@ Runnable versions of every example are in [`../examples`](../examples).
 
 ## 1. Security
 
-- **There is no authentication.** Any `Authorization` header or API key is ignored by the node; the OpenAI SDKs still require one, so pass any string.
-- Anyone who can reach port 43100 can chat, read conversations, manage agents and knowledge, and change the cluster plan. Keep the node on `127.0.0.1` or a private network. If you expose it, put a reverse proxy with authentication and TLS in front.
+- **Every request needs a user.** Programs send `Authorization: Bearer <token>` with an API token created in **Settings → API → API Access**; the dashboard uses a login session. Without a valid token the node answers `401` with `code: "unauthorized"`. With the OpenAI SDKs, pass the token as the API key.
+- A request runs as the token's user: it sees only that user's chats and the agents that user may use. Only administrators manage nodes, models, users, email and linked coordinators.
+- A new coordinator starts with the user `admin` / password `admin`, which must be changed at the first login.
+- Traffic is plain HTTP. Keep the node on `127.0.0.1` or a private network, or put an HTTPS reverse proxy in front of it.
 - The Office document endpoints only listen on `localhost` (ports 43110/43111), so documents cannot be read from other machines.
 - Document and knowledge content is passed to the model as **data**, not as instructions. Changes to an Office document always require approval by that document's user.
 
@@ -48,30 +52,34 @@ Runnable versions of every example are in [`../examples`](../examples).
 
 ### `GET /v1/models`
 
-The swarm serves one active model. Always read its id from here instead of hard-coding it. A request whose `model` does not match returns `404`.
+Lists the models this swarm can answer with: its own model (`owned_by: "dafo-swarm"`), the models of AI cloud nodes configured by an administrator (ids like `azure/gpt-5`) and those of linked coordinators. Always read ids from here instead of hard-coding them; an unknown `model` returns `404`.
 
 ```bash
-curl -s $SWARM_URL/v1/models
+curl -s $SWARM_URL/v1/models -H "$AUTH"
 ```
 
 ```json
 {
   "object": "list",
   "data": [
-    { "id": "/Users/me/Library/Application Support/DAFO Swarm/models/mlx/gemma4-e4b-affine-4bit",
-      "object": "model", "created": 1790416000, "owned_by": "dafo-swarm" }
+    { "id": "qwen3-vl-4b-instruct-4bit", "object": "model", "created": 1790416000, "owned_by": "dafo-swarm" },
+    { "id": "azure/gpt-5", "object": "model", "created": 1790416000, "owned_by": "azure" }
   ]
 }
 ```
 
 `data` is empty (still `200`) when no model is configured.
 
+### `GET /v1/models/{model}`
+
+Returns one entry, or `404` with `code: "model_not_found"`. Ids may contain slashes. `dafo_swarm.input_modalities` is `["text", "image"]` or `["text"]`; for the swarm's own model, `dafo_swarm.image_input` tells how an image becomes visual tokens (`pixels_per_token`, `max_tokens_per_image`, `max_pixels`), so a client can size images. AI cloud models carry a `cloud` object with prices and their node's monthly budget (`monthly_budget`, `spent_this_month`, `over_budget`, `budget_fallback`); while over budget, requests are answered by the fallback model, named in the response's `model`.
+
 ### `GET /v1/agents`
 
-Lists the **enabled** agents. An agent adds its instructions and knowledge base to any request that names it.
+Lists the agents the token's user may use. An agent adds its instructions, knowledge base and tools to any request that names it. Agents marked **Subagent only** are not listed: they work only through the agents that delegate to them (see [AGENTS.md](AGENTS.md)).
 
 ```bash
-curl -s $SWARM_URL/v1/agents
+curl -s $SWARM_URL/v1/agents -H "$AUTH"
 ```
 
 ```json
@@ -88,14 +96,14 @@ This is OpenAI's Chat Completions API. The Word and Excel add-ins use it.
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `model` | string | yes | The id from `/v1/models` |
+| `model` | string | no | An id from `/v1/models`. Omitted with an `agent`, the agent's first ready model is used; otherwise the swarm's own model |
 | `messages` | array | yes | Non-empty; roles `system`, `user`, `assistant`, `tool` |
 | `agent` | string | no | Agent id from `/v1/agents`. Adds its instructions and relevant knowledge |
 | `stream` | boolean | no | `true` returns Server-Sent Events |
 | `stream_options.include_usage` | boolean | no | Adds a final chunk with `usage` when streaming |
 | `max_completion_tokens` | integer | no | Greater than 0 |
 | `max_tokens` | integer | no | Legacy alias; if both are sent they must match |
-| `temperature` | number | no | `0` gives deterministic output |
+| `temperature` | number | no | `0`–`2`; overrides the configured temperature for this request. `0` gives deterministic output on the swarm's own model |
 | `tools` | array | no | Function tools (`type: "function"`) |
 | `tool_choice` | string or object | no | `"auto"`, `"none"`, `"required"` or `{"type":"function","function":{"name":…}}` |
 | `parallel_tool_calls` | boolean | no | `false` limits the model to one call per turn |
@@ -106,9 +114,9 @@ This is OpenAI's Chat Completions API. The Word and Excel add-ins use it.
 #### Text
 
 ```bash
-MODEL=$(curl -s $SWARM_URL/v1/models | jq -r '.data[0].id')
+MODEL=$(curl -s $SWARM_URL/v1/models -H "$AUTH" | jq -r '.data[0].id')
 
-curl -s $SWARM_URL/v1/chat/completions -H 'content-type: application/json' -d "{
+curl -s $SWARM_URL/v1/chat/completions -H "$AUTH" -H 'content-type: application/json' -d "{
   \"model\": \"$MODEL\",
   \"messages\": [
     {\"role\": \"system\", \"content\": \"You are a concise manufacturing assistant.\"},
@@ -134,12 +142,12 @@ curl -s $SWARM_URL/v1/chat/completions -H 'content-type: application/json' -d "{
 }
 ```
 
-`finish_reason` is `stop`, `length` (the token limit was reached) or `tool_calls`.
+`finish_reason` is `stop`, `length` (the token limit was reached, or the swarm stopped a model that kept repeating itself) or `tool_calls`.
 
 #### Streaming
 
 ```bash
-curl -sN $SWARM_URL/v1/chat/completions -H 'content-type: application/json' -d "{
+curl -sN $SWARM_URL/v1/chat/completions -H "$AUTH" -H 'content-type: application/json' -d "{
   \"model\": \"$MODEL\", \"stream\": true, \"stream_options\": {\"include_usage\": true},
   \"messages\": [{\"role\": \"user\", \"content\": \"Write a haiku about CNC machines.\"}]
 }"
@@ -159,9 +167,9 @@ If an error happens after streaming starts, it arrives as `data: {"error": {…}
 #### With an agent (instructions + knowledge base)
 
 ```bash
-AGENT=$(curl -s $SWARM_URL/v1/agents | jq -r '.data[0].id')
+AGENT=$(curl -s $SWARM_URL/v1/agents -H "$AUTH" | jq -r '.data[0].id')
 
-curl -s $SWARM_URL/v1/chat/completions -H 'content-type: application/json' -d "{
+curl -s $SWARM_URL/v1/chat/completions -H "$AUTH" -H 'content-type: application/json' -d "{
   \"model\": \"$MODEL\", \"agent\": \"$AGENT\",
   \"messages\": [{\"role\": \"user\", \"content\": \"Who supplies the PLC for line 3?\"}]
 }"
@@ -169,9 +177,9 @@ curl -s $SWARM_URL/v1/chat/completions -H 'content-type: application/json' -d "{
 
 The node puts the agent's instructions and the 5 knowledge facts most relevant to the last user message into the system context. An unknown agent returns `400` and a disabled agent returns `409`.
 
-#### Images (Gemma 4 models)
+#### Images
 
-Pass images as base64 data URLs or HTTP(S) URLs. Supported types are JPEG, PNG and WebP, up to 20 MiB each.
+Models whose `input_modalities` include `image` (see `/v1/models/{model}`) read images. Pass them as base64 data URLs or HTTP(S) URLs. Supported types are JPEG, PNG and WebP, up to 20 MiB each.
 
 ```bash
 B64=$(base64 -i part.png | tr -d '\n')
@@ -181,7 +189,7 @@ jq -n --arg model "$MODEL" --arg url "data:image/png;base64,$B64" '{
     { type: "text", text: "List any visible defects on this part." },
     { type: "image_url", image_url: { url: $url } }
   ]}]
-}' | curl -s $SWARM_URL/v1/chat/completions -H 'content-type: application/json' --data-binary @-
+}' | curl -s $SWARM_URL/v1/chat/completions -H "$AUTH" -H 'content-type: application/json' --data-binary @-
 ```
 
 #### Function tools
@@ -220,23 +228,30 @@ This is OpenAI's Responses API. The dashboard chat uses it. It supports file inp
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `model` | string | yes | The id from `/v1/models` |
+| `model` | string | yes | An id from `/v1/models` |
 | `input` | string or array | yes | Text, or items `{role, content}` with `input_text`, `input_image` and `input_file` parts |
-| `agent` | string | no | Same behaviour as in chat completions |
+| `agent` | string | no | Same behaviour as in chat completions; the agent's own tools and subagents are used |
 | `max_output_tokens` | integer | no | Greater than 0 |
+| `temperature` | number | no | `0`–`2`; same override as in chat completions |
 | `tools` | array | no | MCP tools only (`type: "mcp"`) |
 | `max_tool_calls` | integer | no | Greater than 0 |
-| `stream` | boolean | no | Only `false` |
+| `stream` | boolean | no | `true` returns Responses Server-Sent Events |
 
 ```bash
-curl -s $SWARM_URL/v1/responses -H 'content-type: application/json' \
+curl -s $SWARM_URL/v1/responses -H "$AUTH" -H 'content-type: application/json' \
   -d "{\"model\":\"$MODEL\",\"input\":\"Summarise lean manufacturing in one sentence.\"}" \
   | jq -r '.output[] | select(.type=="message") | .content[0].text'
 ```
 
+#### Streaming
+
+With `stream: true` the reply is `text/event-stream` in the OpenAI Responses format: `response.created`, `response.in_progress`, then per output item `response.output_item.added`, `response.content_part.added`, `response.output_text.delta`…, `response.output_text.done`, `response.content_part.done`, `response.output_item.done`, and finally `response.completed` (or `response.incomplete`) with the full response. Without `tools`, text deltas arrive while the model generates; with tools, each message's text arrives when its turn ends. A failure emits `error` then `response.failed`. Closing the connection cancels the request. The OpenAI SDK's `client.responses.create(..., stream=True)` reads it.
+
+A response that stopped at its output limit has `status: "incomplete"` and `incomplete_details: {"reason": "max_output_tokens"}`; one the swarm stopped because the model kept repeating itself has `{"reason": "repetition"}`.
+
 #### Files
 
-`input_file` takes exactly one of `file_data` (base64 data URL) or `file_url` (HTTP/HTTPS), up to 20 MiB:
+`input_file` takes exactly one of `file_id` (a file uploaded to [`/v1/files`](#v1files)), `file_data` (base64 data URL) or `file_url` (HTTP/HTTPS), up to 20 MiB:
 
 - PDFs are rendered to page images.
 - `text/plain`, `text/markdown`, `text/csv` and `application/json` are read as text.
@@ -250,6 +265,26 @@ curl -s $SWARM_URL/v1/responses -H 'content-type: application/json' \
   ]}]
 }
 ```
+
+#### `/v1/files`
+
+Upload a file once and reference it by `file_id`, as with OpenAI. Files are kept on the coordinator, visible only to the user who uploaded them (and administrators), until deleted.
+
+| Request | Result |
+|---|---|
+| `POST /v1/files` (multipart: `file`, `purpose`) | The file object |
+| `GET /v1/files?purpose=&limit=&order=asc\|desc&after=` | `{ "object": "list", "data": [...] }` |
+| `GET /v1/files/{file_id}` | The file object |
+| `GET /v1/files/{file_id}/content` | The file's bytes |
+| `DELETE /v1/files/{file_id}` | `{ "id": "...", "object": "file", "deleted": true }` |
+
+`purpose` is one of `user_data`, `assistants`, `vision`, `batch`, `fine-tune` or `evals`; up to 20 MiB per file.
+
+```bash
+curl -s $SWARM_URL/v1/files -H "$AUTH" -F purpose=user_data -F file=@drawing.pdf
+```
+
+An unknown or someone else's `file_id` returns `404` with `code: "file_not_found"`.
 
 #### MCP tools
 
@@ -284,7 +319,7 @@ The node itself provides an MCP server with these tools:
 Add `?agent=<agent id>` to `server_url` to choose which agent's knowledge the tools use.
 
 ```bash
-curl -s $SWARM_URL/v1/responses -H 'content-type: application/json' -d "{
+curl -s $SWARM_URL/v1/responses -H "$AUTH" -H 'content-type: application/json' -d "{
   \"model\": \"$MODEL\", \"agent\": \"$AGENT\", \"max_tool_calls\": 4,
   \"input\": \"Remember that line 3 maintenance is every Friday at 6am.\",
   \"tools\": [{
@@ -316,11 +351,11 @@ Besides the `message`, `output` contains `mcp_list_tools` and one `mcp_call` ite
 
 ## 5. Agents
 
-An agent is a named set of instructions with its own knowledge base. Agents are stored on the coordinator, and only the coordinator can manage them (`403` elsewhere).
+An agent is a named set of instructions with its own knowledge base, tools (built-in tools, databases, MCP servers), preferred models and, optionally, **subagents**: other agents it delegates to. Agents are stored on the coordinator. Create and edit them in the dashboard (**Settings → Agents**), where tools, MCP servers and subagents are chosen; the endpoints below cover the basic fields. How a team of agents works together, and why several specialised agents beat one agent with many MCP tools, is explained in [AGENTS.md](AGENTS.md).
 
 | Method | Path | Body | Returns |
 |---|---|---|---|
-| `GET` | `/v1/agents` | — | Enabled agents (id, name) |
+| `GET` | `/v1/agents` | — | Agents the user may use (id, name) |
 | `POST` | `/api/agents` | `AgentPayload` | The created agent (`id` like `agent-<uuid>`) |
 | `PUT` | `/api/agents/{agent_id}` | `AgentPayload` | The updated agent |
 | `DELETE` | `/api/agents/{agent_id}` | — | `204`; also deletes the agent's knowledge |
@@ -338,7 +373,7 @@ An agent is a named set of instructions with its own knowledge base. Agents are 
 ```
 
 ```bash
-curl -s -X POST $SWARM_URL/api/agents -H 'content-type: application/json' \
+curl -s -X POST $SWARM_URL/api/agents -H "$AUTH" -H 'content-type: application/json' \
   -d '{"name":"Oliver","system_prompt":"You are Oliver, the production assistant of ACME.","enabled":true}'
 ```
 
@@ -378,7 +413,7 @@ Facts are used in three ways:
 Search results combine semantic similarity (60 %) with subject/object/relation matches (40 %):
 
 ```bash
-curl -s -X POST $SWARM_URL/api/agents/$AGENT/knowledge/search -H 'content-type: application/json' \
+curl -s -X POST $SWARM_URL/api/agents/$AGENT/knowledge/search -H "$AUTH" -H 'content-type: application/json' \
   -d '{"query":"who supplies line 3","limit":3}'
 ```
 
@@ -460,8 +495,9 @@ The `/v1` endpoints return OpenAI-style errors:
 |---|---|
 | `200` | Success |
 | `400` | Malformed request, empty messages, invalid image or file, unsupported option, unknown agent |
-| `403` | Management call on a node that is not the coordinator |
-| `404` | `model` does not match the active model |
+| `401` | Missing or invalid API token (`code: "unauthorized"`) |
+| `403` | The user may not do this (management call by a non-administrator, or on a node that is not the coordinator) |
+| `404` | Unknown `model` or `file_id` |
 | `409` | Disabled agent; shared document not found or its pane is closed |
 | `502` | Invalid tool call generated by the model, or MCP server failure |
 | `503` | No model or plan loaded, or a node went offline (check `/api/state`) |
@@ -473,9 +509,9 @@ The `/api` endpoints return a plain-text or `{"error": "…"}` body with the sta
 
 ## 10. Limits and behaviour
 
-- **One model per swarm.** Change it from the dashboard (Settings → Model).
+- **Models.** The swarm serves one distributed model of its own (change it in Settings → Model) plus any AI cloud or linked-coordinator models listed in `/v1/models`.
 - **Concurrency.** Requests beyond the coordinator's *maximum active requests* setting wait in a queue. Every token travels through all the nodes that hold layers, so set generous client timeouts (several minutes for long answers).
 - **Context.** Long dashboard chats are summarised automatically before they exceed the memory of the nodes. API clients should keep conversations within the model's context.
 - **Request size.** 64 MiB per request body; 20 MiB per image or file.
-- **Unsupported.** Streaming on `/v1/responses`, `n > 1`, embeddings and audio endpoints.
+- **Unsupported.** `n > 1`, embeddings and audio endpoints, and streaming `/v1/responses` with an agent linked from another swarm.
 - **Knowledge scope.** The knowledge base lives on the coordinator and is not replicated to other nodes.

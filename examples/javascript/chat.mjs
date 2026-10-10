@@ -4,8 +4,10 @@
 import OpenAI from "openai";
 
 const SWARM_URL = (process.env.SWARM_URL ?? "http://127.0.0.1:43100").replace(/\/$/, "");
-// The node ignores the key; distributed generation of long answers can take minutes.
-const client = new OpenAI({ baseURL: `${SWARM_URL}/v1`, apiKey: "unused", timeout: 600_000 });
+const SWARM_API_KEY = process.env.SWARM_API_KEY;
+if (!SWARM_API_KEY) throw new Error("Set SWARM_API_KEY to an API token from Settings > API > API Access.");
+// Distributed generation of long answers can take minutes.
+const client = new OpenAI({ baseURL: `${SWARM_URL}/v1`, apiKey: SWARM_API_KEY, timeout: 600_000 });
 
 const { data: models } = await client.models.list();
 if (models.length === 0) throw new Error("The swarm has no active model yet.");

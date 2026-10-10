@@ -2,6 +2,9 @@
 # Streams tokens as they are generated (Server-Sent Events).
 set -euo pipefail
 SWARM_URL=${SWARM_URL:-http://127.0.0.1:43100}
+: "${SWARM_API_KEY:?Set SWARM_API_KEY to an API token from Settings > API > API Access}"
+# Every call to the swarm carries the API token.
+curl() { command curl -H "Authorization: Bearer $SWARM_API_KEY" "$@"; }
 PROMPT=${1:-"Write a short paragraph about predictive maintenance."}
 MODEL=$(curl -sf "$SWARM_URL/v1/models" | jq -r '.data[0].id')
 

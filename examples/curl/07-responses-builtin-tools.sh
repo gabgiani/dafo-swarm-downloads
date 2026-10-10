@@ -3,6 +3,9 @@
 # Usage: ./07-responses-builtin-tools.sh "Remember that line 3 maintenance is every Friday at 6am."
 set -euo pipefail
 SWARM_URL=${SWARM_URL:-http://127.0.0.1:43100}
+: "${SWARM_API_KEY:?Set SWARM_API_KEY to an API token from Settings > API > API Access}"
+# Every call to the swarm carries the API token.
+curl() { command curl -H "Authorization: Bearer $SWARM_API_KEY" "$@"; }
 PROMPT=${1:-"What do you know about line 3?"}
 MODEL=$(curl -sf "$SWARM_URL/v1/models" | jq -r '.data[0].id')
 AGENT=${AGENT:-$(curl -sf "$SWARM_URL/v1/agents" | jq -r '.data[0].id // empty')}

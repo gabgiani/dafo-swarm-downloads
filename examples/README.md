@@ -40,9 +40,11 @@ The environment variable takes priority over the saved key and lasts for that te
 
 | Folder | Requirements | Contents |
 |---|---|---|
-| [curl](curl) | `curl`, `jq` | One script per endpoint |
+| [curl](curl) | `curl`, `jq`, `SWARM_API_KEY` set | One script per endpoint |
 | [python](python) | Python 3.9+, `python run.py` | OpenAI SDK, tool calling, agents, knowledge loading, built-in tools, Office documents |
-| [javascript](javascript) | Node.js 20+, `npm install` | OpenAI SDK, streaming with `fetch`, knowledge, Office documents |
+| [javascript](javascript) | Node.js 20+, `npm install`, `SWARM_API_KEY` set | OpenAI SDK, streaming with `fetch`, knowledge, Office documents |
+
+The curl and JavaScript examples stop with a clear message when `SWARM_API_KEY` is not set. After the Python menu has saved the token, load it into the shell with `set -a; . examples/python/.env; set +a`.
 
 Scripts that **write** data create agents or knowledge facts on the coordinator:
 - `curl/08-agents.sh`

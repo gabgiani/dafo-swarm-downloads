@@ -1,11 +1,14 @@
 // Streaming with plain fetch (no SDK): parses the Server-Sent Events of /v1/chat/completions.
 //   node stream.mjs "Write a short paragraph about predictive maintenance."
 const SWARM_URL = (process.env.SWARM_URL ?? "http://127.0.0.1:43100").replace(/\/$/, "");
+const SWARM_API_KEY = process.env.SWARM_API_KEY;
+if (!SWARM_API_KEY) throw new Error("Set SWARM_API_KEY to an API token from Settings > API > API Access.");
+const authorization = `Bearer ${SWARM_API_KEY}`;
 
-const models = await (await fetch(`${SWARM_URL}/v1/models`)).json();
+const models = await (await fetch(`${SWARM_URL}/v1/models`, { headers: { authorization } })).json();
 const response = await fetch(`${SWARM_URL}/v1/chat/completions`, {
   method: "POST",
-  headers: { "content-type": "application/json" },
+  headers: { "content-type": "application/json", authorization },
   body: JSON.stringify({
     model: models.data[0].id,
     stream: true,
