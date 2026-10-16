@@ -27,7 +27,7 @@ body = {
     "tools": [{
         "type": "mcp",
         "server_label": "swarm",
-        "server_url": "builtin://chat" + (f"?agent={agent}" if agent else ""),
+        "server_url": "builtin://chat",
         "allowed_tools": [
             "store_knowledge", "search_knowledge", "list_knowledge",
             "list_office_documents", "read_office_document", "send_office_document_instruction",

@@ -6,6 +6,7 @@
 - Latest release: <https://github.com/gabgiani/dafo-swarm-downloads/releases/latest>
 - Full API reference: [docs/API.md](docs/API.md)
 - Agents that work together (subagents, shared workspace, design advice): [docs/AGENTS.md](docs/AGENTS.md)
+- Single-file guide for AI coding assistants (what it enables, rules, recipes, SAP Connect integration): [llms-full.txt](llms-full.txt), indexed in [llms.txt](llms.txt)
 - Runnable examples: [examples/](examples/)
 
 This repository contains the public **installers** and their **checksums**, plus the **API documentation** and **client examples**. The runtime source code is private.
@@ -64,6 +65,7 @@ On Windows, in PowerShell:
 
 ```powershell
 (Get-FileHash .\dafo-swarm-setup_<version>_x64.exe -Algorithm SHA256).Hash   # compare with the .sha256 file
+Get-AuthenticodeSignature .\dafo-swarm-setup_<version>_x64.exe                # Status: Valid, signer CN=DAFO AI LTD
 ```
 
 ---
@@ -92,7 +94,7 @@ The package bundles the CUDA 12 runtime libraries it needs. Only the NVIDIA driv
 ### Windows 10 / 11
 
 1. Download `dafo-swarm-setup_<version>_x64.exe` from the [latest release](https://github.com/gabgiani/dafo-swarm-downloads/releases/latest) and run it.
-2. The installer is per user: it installs into `%LOCALAPPDATA%\Programs\DAFO Swarm` and needs no administrator rights. It is **not code-signed yet**, so Windows SmartScreen may show a warning: choose **More info → Run anyway**, after checking the SHA-256 above if you want to be sure.
+2. The installer is per user: it installs into `%LOCALAPPDATA%\Programs\DAFO Swarm` and needs no administrator rights. The installer and its programs are code-signed by **DAFO AI LTD**. SmartScreen may still warn while the certificate builds reputation: choose **More info → Run anyway** after checking the signature and SHA-256 above.
 3. The **DAFO Swarm** icon appears in the system tray. It starts the node in the background; **Open Chat** and **Open Settings** open the dashboard at <http://127.0.0.1:43100>.
 4. With an NVIDIA GPU and a current driver, the tray runs the CUDA engine. Without one, or if CUDA fails to start, it switches to the CPU engine by itself.
 
@@ -119,7 +121,7 @@ The macOS package adds a **DAFO Swarm** button to the Home tab of Word and Excel
 - **Word:** writes and edits documents from a request: proposals, letters, reports, cover pages, tables and translations. Every change is shown as a proposal you **Apply** or **Discard**.
 - **Excel:** builds spreadsheets: tables, titles, formulas, totals, formats and new worksheets. It reads only the cells it needs.
 - **Agents:** uses the agent you choose, so answers follow that agent's instructions and knowledge base.
-- **Shared documents:** can **share its document with the swarm**. Other panes can then mention it (for example `@Costos.xlsx`), and the dashboard chat can read it or send it changes. A change that comes from elsewhere is applied only after that document's user approves it.
+- **Shared documents:** can **share its document with the swarm**. Other panes can then mention it (for example `@Costos.xlsx`), and the dashboard chat can read it or send it changes. A change sent from the dashboard chat is applied automatically in Word and waits for its user's approval in Excel; a change sent through the HTTP API always waits for approval.
 
 ---
 
@@ -149,16 +151,16 @@ print(reply.choices[0].message.content)
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /v1/models` | The swarm's own model, plus AI cloud and linked-coordinator models |
+| `GET /v1/models` | The swarm's own model, plus AI cloud and linked-coordinator models, with readiness and context limits |
 | `GET /v1/agents` | Lists the agents you may use |
-| `POST /v1/chat/completions` | Chat, with streaming, images, function tools and an optional `agent` |
-| `POST /v1/responses` | Responses API with streaming, files and MCP tools, including the built-in `builtin://chat` tools |
+| `POST /v1/chat/completions` | Chat, with streaming, images, function tools, JSON schema output and an optional `agent` |
+| `POST /v1/responses` | Responses API with streaming, files, JSON schema output, subagents and MCP tools, including the built-in `builtin://chat` tools |
 | `/v1/files` | Upload files once and reference them by `file_id` |
 | `/api/agents…` | Create, update and delete agents |
 | `/api/agents/{id}/knowledge…` | Manage and search an agent's knowledge base |
 | `https://localhost:43110/api/swarm/documents…` | Documents shared from the Office add-ins |
 
-Every endpoint is documented with request and response examples in **[docs/API.md](docs/API.md)**.
+Every endpoint is documented with request and response examples in **[docs/API.md](docs/API.md)**. When an AI assistant writes the integration for you, point it to **[llms-full.txt](llms-full.txt)**: one self-contained file with everything it needs.
 
 > **Security:** every request needs an API token, and runs as that token's user. Traffic is plain HTTP: keep the node on `127.0.0.1` or a network you control, or put an HTTPS reverse proxy in front of it.
 

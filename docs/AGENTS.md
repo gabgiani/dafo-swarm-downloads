@@ -1,6 +1,6 @@
 # Agents that work together
 
-This guide explains how DAFO Swarm agents delegate work to each other, where the data they gather goes, and how to design a team of agents. It describes version `0.1.0-20261010.11` and later.
+This guide explains how DAFO Swarm agents delegate work to each other, where the data they gather goes, and how to design a team of agents. It describes version `0.1.0-20261015.1`.
 
 ## Contents
 
@@ -29,9 +29,17 @@ Swarm loads large tool sets in groups on demand, which helps, but it does not re
 ## 2. Principal and subagents
 
 - A **subagent** is a normal agent (its own prompt, tools, MCP servers and preferred models) that another agent may call.
-- The **principal** is the agent the user talks to. In its editor (**Settings → Agents → Subagents**) you choose its subagents and write one sentence per subagent saying what it does; the principal reads that sentence to decide whom to call.
+- The **principal** is the agent the user talks to. In its editor (**Settings → Agents → Subagents**) you choose up to 12 subagents, write one sentence per subagent saying what it does, and pick its **mode**; the principal reads that sentence to decide whom to call.
 - An agent marked **Subagent only** is hidden from the chat picker and from `/v1/agents`: users talk to the principal, not to every member of the team.
-- Depth is one level: a subagent cannot have subagents of its own.
+- Delegation is one level deep. An agent may be a subagent of one agent and have subagents of its own (when users talk to it directly), but a delegated turn never receives `ask_` tools, so there are no chains or loops even if A uses B and B uses A.
+
+Each subagent works in one of three modes, each with its own instructions for the principal and for the subagent:
+
+| Mode | The principal asks for | The subagent replies with |
+|---|---|---|
+| `data` (**Fetches data**, default) | Specific records: identifiers, periods, fields | One or two lines; the data goes to the workspace and the principal analyses it |
+| `answer` (**Answers as an expert**) | A question, as to a specialist, with the facts it needs | A short conclusion (under 2,000 characters) citing the evidence ids it relies on |
+| `action` (**Runs actions**) | One exact action, its target and the expected outcome | What it did, what is still running in the background, and what failed |
 
 Example team (names and roles are yours):
 
@@ -46,7 +54,7 @@ To the principal, each subagent is a single tool, `subagents::ask_<name>`, with 
 ## 3. What happens when an agent delegates
 
 1. The principal calls `ask_william` with a short task: which records, identifiers, period and fields it needs. The subagent sees **only** that task and context, never the conversation.
-2. Swarm runs a turn of William with his own prompt, tools and models. Because the task was delegated, his system prompt adds **Working as a subagent**: fetch the requested data and stop, without analysing, summarising or writing documents.
+2. Swarm runs a turn of William with his own prompt, tools and models. Because the task was delegated, his system prompt adds the **Working as a subagent** part of his mode; in `data` mode: fetch the requested data and stop, without analysing, summarising or writing documents.
 3. Every tool result William gets is saved in the conversation's **workspace** (next section), each record list as an SQLite table.
 4. The principal receives William's one-line reply and, under `data`, the references to everything he saved:
 
@@ -86,6 +94,9 @@ Tools the agents use on it:
 | `workspace_read` | Read saved text by evidence id, page by page |
 | `workspace_files` | List what each agent saved |
 | `workspace_write_document` | Save a document, only when the user asks for one |
+| `workspace_patch_document` | Change part of a saved document |
+
+Only results an MCP server declares as business data become evidence items. A server can classify its tools and results with the `com.dafonet/tool-classification` and `com.dafonet/result-classification` metadata; technical results, errors and task acknowledgements stay out of the evidence list.
 
 In the dashboard, the **W** button opens the workspace grouped by agent. Opening an item shows its data tables first; the source's notes on how to read them are folded under **Source notes**. In the **MCP tools** trace of an answer, each call shows its evidence id and opens the data it returned. Each agent's folder has its own **Delete** button, and **Delete workspace data** removes everything; the conversation and its answers stay.
 
@@ -102,21 +113,23 @@ Stopping the answer in the message box (or **Stop all** in the calls list) stops
 
 ## 7. Tuning the delegation instructions
 
-The delegation behaviour lives in two editable parts of the system prompt (**Settings → Server → System prompt**), not in code:
+The delegation behaviour lives in editable parts of the system prompt (**Settings → Server → System prompt**), not in code:
 
 | Part | Sent to | Default behaviour |
 |---|---|---|
-| **Delegating to subagents** | An agent that has subagents | Ask subagents only for data; analyse it with `workspace_tables` and `workspace_query`; cite evidence ids; do not ask again for data already saved |
-| **Working as a subagent** | An agent running a delegated task; **not** when a user talks to it directly | Fetch the requested data and stop; reply in one or two lines |
+| **Delegating to subagents** | An agent that has subagents | Ask subagents only for what they do; analyse data with `workspace_tables` and `workspace_query`; cite evidence ids; do not ask again for data already saved |
+| **Subagent mode: … (principal)** | The principal, in each `ask_` tool's description | How to ask a subagent of that mode |
+| **Working as a subagent: …** | An agent running a delegated task; **not** when a user talks to it directly | `data`: fetch and stop, reply in one or two lines. `answer`: analyse and conclude with evidence ids. `action`: do exactly the requested action once and report |
 
-Because the second part is only sent to delegated turns, the same agent can fetch quietly for a principal and still explain its findings when a user chats with it directly.
+Because the last part is only sent to delegated turns, the same agent can fetch quietly for a principal and still explain its findings when a user chats with it directly.
 
 ## 8. Designing a team: checklist
 
 - **One system per subagent.** SAP in one agent, MES in another, web research in a third. Give each only the MCP tools of its system.
 - **Write the subagent's description for the principal**: what data it can fetch, in one sentence ("Fetches SAP production orders, stock, purchases and receipts").
 - **Keep the principal light.** It needs the workspace, charts and perhaps the knowledge base, not the data sources.
-- **Ask for data, analyse in the principal.** Do not ask a subagent to "assess the risk": ask it for the order, its materials and their stock, and let the principal decide.
+- **Ask for data, analyse in the principal.** Do not ask a `data` subagent to "assess the risk": ask it for the order, its materials and their stock, and let the principal decide. Use `answer` mode only when the subagent's own data needs an expert reading.
+- **Use `action` mode for subagents that change things** (send a request to another app, create a record), and let them act only when the user asked for it.
 - **Mark helpers as Subagent only** so users talk to one interlocutor.
 - **Choose models per role.** Subagents that only fetch data work well on small local models; give the principal the stronger model.
 
@@ -124,10 +137,13 @@ Because the second part is only sent to delegated turns, the same agent can fetc
 
 | Limit | Value |
 |---|---|
+| Subagents per agent | 12 |
 | Subagent calls per principal turn | 8 |
 | Tool calls per turn (principal or subagent) | 16 by default |
-| Time per subagent call | 5 minutes |
+| Time per subagent call | No fixed total: the call is stopped after the node's request timeout (300 s by default) **without activity**; every generated token or tool step resets it |
 | Subagent reply text | 2,400 characters; data travels as workspace references |
-| Depth | 1 (a subagent cannot have subagents) |
+| Depth | 1 (a delegated turn never delegates again) |
 | Calls | Sequential, one subagent at a time |
-| `workspace_query` | One `SELECT`, 10 s, 200 rows |
+| `workspace_query` | One `SELECT`, 10 s, 200 rows, 12,000 characters of output |
+
+Subagents are used by the dashboard chat and Microsoft Teams bots, and by `/v1/responses` when the request names the principal in `agent`. `/v1/chat/completions` and the web chat widget do not delegate. The subagent's own tools always come from its saved configuration.

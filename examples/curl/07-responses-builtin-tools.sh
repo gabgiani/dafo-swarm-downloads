@@ -15,7 +15,7 @@ jq -n --arg model "$MODEL" --arg agent "$AGENT" --arg prompt "$PROMPT" '{
   model: $model, agent: $agent, input: $prompt, max_tool_calls: 4,
   tools: [{
     type: "mcp", server_label: "swarm",
-    server_url: ("builtin://chat?agent=" + $agent),
+    server_url: "builtin://chat",
     allowed_tools: ["store_knowledge", "search_knowledge", "list_knowledge",
                     "list_office_documents", "read_office_document", "send_office_document_instruction"],
     require_approval: "never"

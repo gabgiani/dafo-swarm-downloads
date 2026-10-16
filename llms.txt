@@ -1,0 +1,22 @@
+# DAFO Swarm
+
+> DAFO Swarm runs large language models on a company's own machines and serves them through an OpenAI-compatible HTTP API on port 43100 of the coordinator, with agents, a knowledge base, files, MCP tools and built-in tools. Documentation describes version 0.1.0-20261015.1.
+
+To integrate DAFO Swarm into an app, read the single self-contained AI integration file first; the other documents are the full human-oriented reference.
+
+## AI integration
+
+- [AI integration file](https://raw.githubusercontent.com/gabgiani/dafo-swarm-downloads/main/llms-full.txt): what it enables, key concepts, connection, rules for AI assistants, recipes in Python, TypeScript and curl, request shapes, errors, limits, security, DAFO SAP Connect integration, endpoint index
+
+## Docs
+
+- [HTTP API reference](https://raw.githubusercontent.com/gabgiani/dafo-swarm-downloads/main/docs/API.md): every endpoint with request and response examples
+- [Agents that work together](https://raw.githubusercontent.com/gabgiani/dafo-swarm-downloads/main/docs/AGENTS.md): subagents, modes, the conversation workspace and team design
+
+## Examples
+
+- [Examples overview](https://raw.githubusercontent.com/gabgiani/dafo-swarm-downloads/main/examples/README.md): runnable curl, Python and JavaScript clients
+
+## Optional
+
+- [Downloads and installation](https://raw.githubusercontent.com/gabgiani/dafo-swarm-downloads/main/README.md): installers, checksums, first steps, Office add-ins

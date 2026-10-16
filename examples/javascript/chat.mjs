@@ -19,7 +19,7 @@ const reply = await client.chat.completions.create({
     { role: "user", content: process.argv[2] ?? "Explain OEE in two sentences." },
   ],
   max_completion_tokens: 300,
-  // DAFO Swarm extension: adds the agent's instructions and knowledge.
+  // DAFO Swarm extension: adds the agent's instructions.
   ...(process.env.AGENT ? { agent: process.env.AGENT } : {}),
 });
 console.log(reply.choices[0].message.content);

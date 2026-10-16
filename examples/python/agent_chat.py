@@ -1,4 +1,4 @@
-"""Chat as an agent. The node adds the agent's instructions and its most relevant knowledge facts.
+"""Chat as an agent. The node adds the agent's instructions; knowledge is read through tools (see responses_builtin_tools.py).
 
     python agent_chat.py "Who is the PLC contact for line 3?"          # first enabled agent
     AGENT=agent-... python agent_chat.py "..."                          # a specific agent

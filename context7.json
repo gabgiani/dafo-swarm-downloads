@@ -1,0 +1,17 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "DAFO Swarm",
+  "description": "DAFO Swarm runs large language models on a company's own machines and serves them through an OpenAI-compatible API with agents, knowledge base, files, MCP tools and built-in tools.",
+  "folders": [],
+  "excludeFolders": ["examples/python/.venv", "examples/python/__pycache__", "examples/javascript/node_modules"],
+  "rules": [
+    "Read llms-full.txt first: it is the self-contained integration guide for AI assistants.",
+    "Use the official OpenAI SDK with base_url SWARM_URL + /v1 and SWARM_API_KEY as the API key, read from configuration, and call it from a backend, never from a browser.",
+    "Read model ids from GET /v1/models and use a model whose dafo_swarm.ready is true; never hard-code model ids.",
+    "Send the whole conversation on every request; previous_response_id, store and instructions are ignored, so put instructions in a leading system message.",
+    "Use /v1/chat/completions for function tools and /v1/responses for MCP tools, input_file, builtin://chat tools and subagents.",
+    "Send the agent id as the body field agent (extra_body in the Python SDK); knowledge is read with the search_knowledge tool, not injected.",
+    "MCP authorization is the bare token without Bearer, and require_approval must be never.",
+    "Use client timeouts of about 10 minutes or streaming, and retry only 503, 504 and 502 invalid_model_output, at most 3 attempts."
+  ]
+}
