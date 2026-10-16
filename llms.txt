@@ -20,3 +20,4 @@ To integrate DAFO Swarm into an app, read the single self-contained AI integrati
 ## Optional
 
 - [Downloads and installation](https://raw.githubusercontent.com/gabgiani/dafo-swarm-downloads/main/README.md): installers, checksums, first steps, Office add-ins
+- [DAFO SAP Connect AI integration file](https://raw.githubusercontent.com/gabgiani/dafo-sap-connect-downloads/main/llms-full.txt): SAP Business One data as read-only MCP tools that DAFO Swarm can call
