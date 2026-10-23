@@ -78,7 +78,7 @@ curl -s "$SWARM_URL/api/health"                                              # n
 curl -s "$SWARM_URL/v1/models" -H "Authorization: Bearer $SWARM_API_KEY"     # token required
 ```
 
-Network: plain HTTP on port `43100`. Keep it on `127.0.0.1` or a private network, or put an HTTPS reverse proxy in front. Python: `pip install openai requests`. Node.js 20+: `npm install openai`.
+Network: plain HTTP on port `43100`. New installs listen on every interface: keep the node behind a firewall or a VPN, or put an HTTPS reverse proxy in front. Python: `pip install openai requests`. Node.js 20+: `npm install openai`.
 
 ---
 
@@ -86,7 +86,7 @@ Network: plain HTTP on port `43100`. Keep it on `127.0.0.1` or a private network
 
 1. MUST use the official OpenAI SDK (or plain HTTP) with `base_url = SWARM_URL + "/v1"` and `api_key = SWARM_API_KEY`, read from configuration. Every `/v1` and `/api` request sends `Authorization: Bearer <token>`.
 2. MUST read model ids from `GET /v1/models` and prefer models with `dafo_swarm.ready == true`. MUST NOT hard-code model ids; they change with the installation. Ids may contain `/`.
-3. MUST send the whole conversation on every request. `previous_response_id`, `store`, `instructions`, `metadata` and Responses `tool_choice` are ignored. Put app instructions in a leading `system` message with string content (the node prepends its own system context and keeps yours after it).
+3. MUST send the whole conversation on every request to a Swarm or cloud model: `previous_response_id`, `store`, `instructions`, `metadata` and Responses `tool_choice` are ignored there. The exception is an **external agent** (Claude Code or Codex): its CLI keeps the conversation, so send `conversation` / `previous_response_id` (Responses) or `conversation_id` (chat completions) to continue it. Put app instructions in a leading `system` message with string content (the node prepends its own system context and keeps yours after it).
 4. MUST use client timeouts of about 10 minutes, or streaming, for generation requests.
 5. MUST use `/v1/chat/completions` for the app's own function tools and `/v1/responses` for MCP tools, files (`input_file`), built-in tools and subagents. Function tools are not accepted by `/v1/responses`; `file` parts are not accepted by chat completions.
 6. MUST send the agent id as the body field `agent` (`extra_body={"agent": ...}` in the Python SDK; a plain extra property in JavaScript). It adds the agent's instructions (and, in `/v1/responses`, its subagents). MUST NOT expect it to add knowledge facts or the agent's dashboard tools; pass `tools` explicitly.
@@ -118,6 +118,7 @@ Network: plain HTTP on port `43100`. Keep it on `127.0.0.1` or a private network
 | Agent teams (subagents) | Responses with `agent` = the principal | Chat as an agent |
 | Streaming with tools | Responses `stream: true` | Streaming Responses |
 | Create or update agents | `POST /api/agents`, `PUT /api/agents/{id}` | Create an agent |
+| Chat with Claude Code or Codex through an external agent, with token usage and plan limits | `POST /v1/chat/completions` or `/v1/responses` with `model: "agent/<id>"` | Chat with an external agent (Claude Code or Codex) |
 | Load and search knowledge | `/api/agents/{id}/knowledge`, `/knowledge/search` | Load and search knowledge |
 | Chat on a public website | Web chat widget | Web chat widget |
 | Read a Word/Excel document shared on the coordinator's Mac | `https://localhost:43110` (Word) / `:43111` (Excel) `/api/swarm/documents/request` | Shared Office documents |
@@ -251,6 +252,22 @@ const reply = await client.chat.completions.create({
   agent: agentId,
 });
 ```
+
+### Chat with an external agent (Claude Code or Codex)
+
+An agent with `kind: "external"` and `runner.cli` set answers with that CLI, restricted to the agent's tools; it needs no model plan. Find it in `GET /v1/models` as `agent/<name>` (or `agent/<id>`); store its `agent.id`, because the name changes when it is renamed.
+
+```bash
+AGENT_ID=$(curl -s "$SWARM_URL/v1/models" -H "Authorization: Bearer $SWARM_API_KEY" | jq -r '.data[] | select(.agent.name=="Claude") | .agent.id')
+curl -s "$SWARM_URL/v1/responses" -H "Authorization: Bearer $SWARM_API_KEY" -H 'content-type: application/json' \
+  -d "{\"model\":\"agent/$AGENT_ID\",\"input\":\"Which orders are late?\",\"conversation\":\"month-close\"}" \
+  | jq '{answer: ([.output[] | select(.type=="message") | .content[0].text] | last), tokens: .usage, limits: .dafo_swarm.usage.rate_limits}'
+```
+
+- Continue the same CLI session with the same `conversation`, or `previous_response_id` set to the last response `id`; chat completions use `conversation_id`.
+- `tools` selects which of the agent's tools the CLI may use, by name (`name` or `server__tool`); `tool_choice: "none"` allows none; an unknown name returns `400` `unknown_tool` with the available names.
+- `usage` is real (`prompt_tokens` includes cache reads and writes; `prompt_tokens_details.cached_tokens`, `completion_tokens_details.reasoning_tokens`). `dafo_swarm.usage` adds `cost_usd` at list price and `rate_limits` (`window`, `used_percent`, `resets_at`, `warning` from 80 %): switch to another agent when a window is nearly full.
+- Streaming chat returns usage in the last chunk when `stream_options.include_usage` is true.
 
 ### Images
 
@@ -630,8 +647,9 @@ reply = call_with_retry(lambda: client.chat.completions.create(model=model["id"]
 ## Security
 
 - Every `/v1` and `/api` request runs as the token's user; users see only their own chats and files and the agents they may use. Administrators manage nodes, models, users, email, databases, MCP servers, functions and linked coordinators.
+- A new node has no account until its first administrator is created: on the same computer, or from the network with the **setup code** the node prints the first time it starts (`swarm-node setup-code` shows it again). Until then the network can do nothing else with it.
 - API tokens do not expire: store them as secrets, one per app, and revoke them in **Settings → API → API Access** or with `DELETE /api/auth/tokens/{id}`.
-- Traffic on port `43100` is plain HTTP without CORS: keep it on `127.0.0.1` or a private network, or put an HTTPS reverse proxy in front. Never ship an API token to a browser or mobile client; use the web chat widget for websites.
+- Traffic on port `43100` is plain HTTP without CORS: new installs listen on every interface, so keep the node behind a firewall or a VPN, or put an HTTPS reverse proxy in front. Never ship an API token to a browser or mobile client; use the web chat widget for websites.
 - The `authorization` of an MCP tool is sent only to that MCP server.
 - File, knowledge, document and tool content reaches the model as data, not as instructions; the app must still treat model output that came from external data as untrusted.
 - Email, database and function-authoring tools are offered only to users with the agent's sensitive-tool rights.
@@ -683,6 +701,7 @@ Do not retry SAP Connect results with `isError: true`, JSON-RPC error `-32602` o
 |---|---|---|---|
 | GET | `/api/health` | none | Node is up; `busy` |
 | POST | `/api/auth/login` | none | `{username, password, token: true, client_name}` returns an API token |
+| POST | `/api/auth/first-account` | none | Create the first administrator `{username, password, setup_code?, token?}`; same computer, or the network with the setup code |
 | GET, POST | `/api/auth/tokens` | user | List / create API tokens (`{name}`) |
 | DELETE | `/api/auth/tokens/{id}` | user | Revoke a token |
 | GET | `/v1/models`, `/v1/models/{id}` | user | Models, readiness, limits, prices |
@@ -695,6 +714,9 @@ Do not retry SAP Connect results with `isError: true`, JSON-RPC error `-32602` o
 | POST | `/api/agents` | administrator, coordinator | Create an agent |
 | PUT | `/api/agents/{id}` | user who may edit it, coordinator | Replace an agent |
 | DELETE | `/api/agents/{id}` | administrator, coordinator | Delete an agent and its knowledge |
+| GET | `/api/external-agents/clis`, `/api/external-agents/usage` | administrator | Where Claude Code and Codex are installed; what they consumed and their plan windows |
+| GET | `/api/external-agents/connections` | administrator | Whether Claude Code is connected |
+| POST, DELETE | `/api/external-agents/connections/claude` | administrator | Connect (`{token}` from `claude setup-token`) or disconnect Claude Code |
 | GET, POST | `/api/agents/{id}/knowledge` | user / editor | List / add facts |
 | PUT, DELETE | `/api/agents/{id}/knowledge/{item}` | editor | Change / delete a fact |
 | POST | `/api/agents/{id}/knowledge/search` | user of the agent | Ranked search |
@@ -707,7 +729,8 @@ Do not retry SAP Connect results with `isError: true`, JSON-RPC error `-32602` o
 
 ## Version notes
 
-- **0.1.0-20261015.1** (current): agents can be published as Microsoft Teams bots, with per-conversation knowledge (`scope`); "Duplicate agent" in the dashboard.
+- **0.1.0-20261023.2** (current): external agents (Claude Code and Codex) as models, with conversations, tool selection, structured output and real usage and plan limits; Claude Code connected from the dashboard; setup of a server without a desktop with a setup code the node makes itself; the placeholder administrator cannot sign in from the network; CPU packages for Ubuntu 22.04 and 24.04; Android; signed Windows installer.
+- **0.1.0-20261015.1**: agents can be published as Microsoft Teams bots, with per-conversation knowledge (`scope`); "Duplicate agent" in the dashboard.
 - **0.1.0-20261014.3 – .6**: published calculation functions (`fn_<name>`, `list_functions`, `create_function`, `delete_function`); an agent that is a subagent may have its own subagents (delegation stays one level deep); an agent always gets the functions it authored.
 - **0.1.0-20261014.2**: MCP servers can be disabled without deleting them.
 - **0.1.0-20261013.2**: `com.dafonet` tool and result classification; only declared business data becomes evidence.

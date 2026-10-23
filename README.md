@@ -13,6 +13,14 @@ This repository contains the public **installers** and their **checksums**, plus
 
 ---
 
+## What's new in 0.1.0-20261023.2
+
+- **Claude Code and Codex as agents.** An agent of type **Claude** or **Codex** answers with that program, using the agent's tools, and works as a subagent, in the chat and through the API (`model: "agent/<id>"`), with conversations that continue, per-request tool selection and real token usage and plan limits in every answer. Details: [docs/API.md](docs/API.md#51-external-agents-claude-code-and-codex).
+- **A server without a desktop.** The CPU packages (Ubuntu 22.04 and 24.04) need no GPU. The node makes a **setup code** the first time it starts; open `http://<server>:43100` from another computer, enter it and create the administrator. Claude Code is connected from the same page by pasting the token of `claude setup-token`.
+- **Android.** A signed APK joins a room as a chat-only node.
+- **Windows installer signed** by DAFO AI LTD; macOS package signed and notarized.
+- **Safer first start.** Until the first administrator exists, the node accepts nothing from the network except creating it (with the setup code, or from the same computer).
+
 ## Downloads
 
 | Platform | Package | Acceleration | Install |
@@ -20,7 +28,9 @@ This repository contains the public **installers** and their **checksums**, plus
 | macOS 26.5+ on Apple Silicon (M1–M4) | `dafo-swarm-<version>-macos-arm64.pkg` | Metal / MLX | Open the package and approve one admin prompt |
 | Ubuntu 24.04 x86_64 with an NVIDIA GPU (compute capability 8.6+, driver 525.60+) | `dafo-swarm-cuda_<version>_amd64.deb` | CUDA 12 runtime bundled | `sudo apt install ./dafo-swarm-cuda_<version>_amd64.deb` |
 | Windows 10 / 11 x64 (NVIDIA GPU optional) | `dafo-swarm-setup_<version>_x64.exe` | CUDA 12 when an NVIDIA GPU is present, otherwise CPU | Run the installer; no administrator rights needed |
-| Linux x86_64 CPU only | coming soon | CPU | — |
+| Ubuntu 24.04 x86_64, no GPU needed | `dafo-swarm_<version>_amd64.deb` | CPU | `sudo apt install ./dafo-swarm_<version>_amd64.deb` |
+| Ubuntu 22.04 x86_64, no GPU needed | `dafo-swarm_<version>_ubuntu22.04_amd64.deb` | CPU | `sudo apt install ./dafo-swarm_<version>_ubuntu22.04_amd64.deb` |
+| Android 9+ (phones and tablets, arm64) | `dafo-swarm-<version>-android.apk` | none: chat-only node | Open the APK and allow installing from this source |
 
 Releases starting with `v0.1.0-20260926.3` include a `.sha256` file for each package. For every release, the checksum is also in the `sha256` field of the manifests below. Release tags follow `v0.1.0-YYYYMMDD.N`.
 
@@ -31,7 +41,10 @@ The installed apps check these manifests every 6 hours and offer a one-click upd
 ```bash
 curl -s https://swarm.dafonet.com/downloads/macos-arm64.json
 curl -s https://swarm.dafonet.com/downloads/ubuntu24.04-cuda.json
+curl -s https://swarm.dafonet.com/downloads/ubuntu24.04-cpu.json
+curl -s https://swarm.dafonet.com/downloads/ubuntu22.04-cpu.json
 curl -s https://swarm.dafonet.com/downloads/windows-x64.json
+curl -s https://swarm.dafonet.com/downloads/android.json
 ```
 
 Each manifest has these fields:
@@ -57,7 +70,9 @@ sudo apt install ./dafo-swarm.deb
 
 ```bash
 shasum -a 256 -c dafo-swarm-<version>-macos-arm64.pkg.sha256      # macOS
-sha256sum -c dafo-swarm-cuda_<version>_amd64.deb.sha256            # Linux
+sha256sum -c dafo-swarm-cuda_<version>_amd64.deb.sha256            # Linux (CUDA)
+sha256sum -c dafo-swarm_<version>_amd64.deb.sha256                 # Linux (CPU)
+shasum -a 256 -c dafo-swarm-<version>-android.apk.sha256           # Android
 spctl -a -vv -t install dafo-swarm-<version>-macos-arm64.pkg       # macOS: "Notarized Developer ID"
 ```
 
@@ -90,6 +105,22 @@ systemctl --user status dafo-swarm-tray.service # tray icon and automatic update
 ```
 
 The package bundles the CUDA 12 runtime libraries it needs. Only the NVIDIA driver must be installed. Logs are in `~/.local/share/dafo-swarm/logs/`.
+
+### Ubuntu without a GPU (a server)
+
+```bash
+sudo apt install ./dafo-swarm_<version>_amd64.deb          # Ubuntu 22.04: dafo-swarm_<version>_ubuntu22.04_amd64.deb
+```
+
+The CPU package runs no GPU engine. It suits a cloud machine that **coordinates a room** or **serves a Claude Code or Codex agent**, with no desktop. To set up such a server from another computer, install it with `install-linux-coordinator.sh`: it prints an address and a **setup code**. Open the address in a browser, enter the code, create the administrator, then create the room and connect to DafoNet. Until the administrator exists, the network can do nothing else with the node.
+
+For a Claude Code agent, install the `claude` CLI on the server, then in the agent editor choose **Claude** and paste the token printed by `claude setup-token` on your own computer.
+
+### Android
+
+1. Download the `.apk` on the phone and open it; Android asks once to allow installing from that source.
+2. Open **DAFO Swarm** and join a room with its six-digit code. The phone only chats: it runs no model.
+3. The APK is signed with the DAFO release key; updates must be signed with the same key. The signing certificate's SHA-256 is in `android.json` (`signing_certificate_sha256`).
 
 ### Windows 10 / 11
 
@@ -151,18 +182,23 @@ print(reply.choices[0].message.content)
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /v1/models` | The swarm's own model, plus AI cloud and linked-coordinator models, with readiness and context limits |
+| `GET /v1/models` | The swarm's own model, plus AI cloud and linked-coordinator models, with readiness and context limits. Also lists the agents you may use as `agent/<name>` |
 | `GET /v1/agents` | Lists the agents you may use |
 | `POST /v1/chat/completions` | Chat, with streaming, images, function tools, JSON schema output and an optional `agent` |
 | `POST /v1/responses` | Responses API with streaming, files, JSON schema output, subagents and MCP tools, including the built-in `builtin://chat` tools |
 | `/v1/files` | Upload files once and reference them by `file_id` |
-| `/api/agents…` | Create, update and delete agents |
+| `/api/agents…` | Create, update and delete agents, including Claude Code and Codex agents (`kind: "external"`) |
+| `/api/external-agents/…` | Which CLIs are installed, connecting Claude Code with a token, and what the CLIs consumed (administrator) |
 | `/api/agents/{id}/knowledge…` | Manage and search an agent's knowledge base |
 | `https://localhost:43110/api/swarm/documents…` | Documents shared from the Office add-ins |
 
 Every endpoint is documented with request and response examples in **[docs/API.md](docs/API.md)**. When an AI assistant writes the integration for you, point it to **[llms-full.txt](llms-full.txt)**: one self-contained file with everything it needs.
 
-> **Security:** every request needs an API token, and runs as that token's user. Traffic is plain HTTP: keep the node on `127.0.0.1` or a network you control, or put an HTTPS reverse proxy in front of it.
+> **Security:** every request needs an API token, and runs as that token's user. Traffic is plain HTTP: new installs listen on every interface, so keep the node behind a firewall or a VPN, or put an HTTPS reverse proxy in front of it. Until the first administrator exists, the network can only create it, with the setup code.
+
+### Claude Code and Codex as agents
+
+An external agent has no Swarm model: its answers come from the **Claude Code** or **Codex** CLI installed on the node's computer, restricted to the agent's tools (MCP servers, databases, knowledge). Create it in the dashboard (**Agents**, choose **Claude** or **Codex**) or with `POST /api/agents` (`"kind": "external"`, `"runner": {"cli": "claude"}`), and reach it like any model: `"model": "agent/<id>"` in `/v1/chat/completions` or `/v1/responses`, streaming included. Its answers carry the tokens and the plan limits the CLI used (`dafo_swarm.usage.rate_limits`), so a program can switch agent before one runs out. It works on a coordinator without a model plan, for example a CPU-only server. Claude Code on a server: install the CLI, then paste the token from `claude setup-token` (run on your own computer) in the agent editor.
 
 ### Agents that work together
 

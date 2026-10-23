@@ -1,6 +1,6 @@
 # DAFO Swarm HTTP API reference
 
-This reference describes version `0.1.0-20261015.1` and was checked against that release's source code. If you are an AI coding assistant, or want a compact implementation guide, read [llms-full.txt](../llms-full.txt) first.
+This reference describes version `0.1.0-20261023.2`. The parts on security, agents as models, external agents (Claude Code and Codex) and setting up a server without a desktop were written against that version's source code; the rest was last checked against `0.1.0-20261015.1`. If you are an AI coding assistant, or want a compact implementation guide, read [llms-full.txt](../llms-full.txt) first.
 
 Every DAFO Swarm node serves HTTP on port **43100** (`http://127.0.0.1:43100` by default). Send inference and management requests to the **coordinator**: the node that created the room. It plans the work, runs the layers it owns, and forwards the rest to the other machines.
 
@@ -42,8 +42,9 @@ Runnable versions of every example are in [`../examples`](../examples). How agen
 - **Every `/v1` and `/api` request needs a user.** Programs send `Authorization: Bearer <token>` with an API token created in **Settings → API → API Access**; the dashboard uses a login session. Without a valid token the node answers `401` with `code: "unauthorized"`. With the OpenAI SDKs, pass the token as the API key. Only `GET /api/health`, the login endpoints and the web chat widget (which checks its own key and origin) answer without a user.
 - A program can also get a token with `POST /api/auth/login` and `{"username", "password", "token": true, "client_name": "My app"}`; the reply carries `token`. API tokens do not expire; revoke them in the dashboard or with `DELETE /api/auth/tokens/{id}`.
 - A request runs as the token's user: it sees only that user's chats and files and the agents that user may use. Only administrators manage nodes, models, users, email, databases, MCP servers, functions and linked coordinators.
-- A new coordinator starts with the user `admin` / password `admin`, which must be changed at the first login.
-- Traffic is plain HTTP. Keep the node on `127.0.0.1` or a private network, or put an HTTPS reverse proxy in front of it.
+- **The first administrator.** A new node has no account of its own. Create it in the dashboard on the computer where DAFO Swarm is installed, or with `POST /api/auth/first-account` and `{"username", "password"}` (add `"token": true` to get an API token back instead of a browser session). Until it exists the network can only create it: `POST /api/auth/login` answers `403` (the placeholder administrator cannot sign in from the network) and the setup pages answer `401`.
+- **A server without a desktop.** The first time a node starts with no account it makes a **setup code** (`XXXX-XXXX-XXXX`), keeps it beside its identity in an owner-only file, prints it in its output and shows it again with `swarm-node setup-code` (`dafo-swarm setup-code` for the Debian package). From another computer, open `http://<server>:43100`, enter the code and choose the administrator's name and password; over the API, add `"setup_code"` to the `first-account` body. The code is the only thing the network can use before the first account, it works only for creating that account, and it disappears with it. `DAFO_SWARM_SETUP_CODE` sets it from outside for a scripted install.
+- Traffic is plain HTTP. New installs listen on every network interface (`0.0.0.0:43100`); a node updated from an older version keeps the address it had. Keep the node behind a firewall or a VPN, or put an HTTPS reverse proxy in front of it, and do not expose port `43100` to the Internet before the first administrator exists.
 - The Office document endpoints only listen on `localhost` (ports 43110/43111), so documents cannot be read from other machines.
 - Document and knowledge content is passed to the model as **data**, not as instructions. An instruction sent to a shared Office document through the HTTP endpoint becomes a proposal its user must **Apply**; see [section 7](#7-shared-office-documents) for the chat tool.
 
@@ -89,6 +90,10 @@ curl -s $SWARM_URL/v1/models -H "$AUTH"
 | `dafo_swarm.image_input` | How an image becomes visual tokens: `pixels_per_token`, `max_tokens_per_image`, `max_pixels`, and `max_edge_pixels` when the model limits the longest side. `null` when unknown or for cloud models |
 | `dafo_swarm.nodes` | Machines holding layers of the swarm's own model: `name`, `layers` (`[start, end)` ranges), `device`, `kv_cache` (`bf16`, `k16_v8` or `int8`) |
 | `cloud` | Only for AI cloud models: provider, prices per million tokens, and the node's monthly budget |
+
+#### Agents as models
+
+`/v1/models` also lists the agents the user may use, as `agent/<name>` (`agent/<id>` when two agents share a name), with `owned_by` `agent`, `external-agent` or `linked-agent` and an `agent` object `{id, name, kind}`. A client that can only choose a model reaches an agent by naming it in `model` of `/v1/chat/completions` or `/v1/responses`. A name changes when the agent is renamed: store `agent.id` and send `model: "agent/<id>"`; `GET /v1/models/agent/<id>` checks it. The swarm's own model leaves the list while it has no active plan, so do not take `data[0]` blindly. Every response carries the node's version in `x-dafo-swarm-version`, and `GET /v1/models` repeats it as `dafo_swarm_version`.
 
 ### `GET /v1/models/{model}`
 
@@ -445,6 +450,59 @@ curl -s -X POST $SWARM_URL/api/agents -H "$AUTH" -H 'content-type: application/j
   -d '{"name":"Oliver","system_prompt":"You are Oliver, the production assistant of ACME.","enabled":true}'
 ```
 
+### 5.1 External agents: Claude Code and Codex
+
+An **external** agent has no Swarm model: its answers come from the **Claude Code** or **Codex** command-line program installed on the node's computer, which uses only the agent's tools (its MCP servers, databases, knowledge and built-in tools). Two uses:
+
+- **Outside assistants** (Claude Desktop, VS Code, Claude Code on another machine) use the agent's tools over MCP at `/mcp/agents/<id>` with an API token. Leave the CLI empty for this.
+- **With a CLI set**, other Swarm agents add it as a subagent, it appears in the chat's agent selector and in `GET /v1/agents`, and API clients chat with it. It needs no distributed model: a coordinator without a model plan, for example a server without a GPU, still answers.
+
+Create one in the dashboard (**Agents**, type **Claude** or **Codex**) or through the API; only an administrator may set `runner`, because it starts a program on that computer:
+
+```bash
+curl -s -X POST $SWARM_URL/api/agents -H "$AUTH" -H 'content-type: application/json' \
+  -d '{"name":"Claude","system_prompt":"","enabled":true,"all_users":true,"kind":"external","runner":{"cli":"claude","model":"sonnet"}}'
+```
+
+`runner.cli` is `"claude"`, `"codex"` or `null` (only used from outside); `runner.model` is optional (empty uses the CLI's own default).
+
+**Signing the CLI in.** Install the CLI on the node's computer (`GET /api/external-agents/clis` says where each was found: `{"claude": "<path or null>", "codex": "<path or null>"}`). Codex uses the account signed in with `codex login` on that computer. For Claude Code on a server nobody can open a browser on, an administrator runs `claude setup-token` on their own computer and pastes the token in the agent editor (or sends it to the API). The node tries it once with Claude Code and keeps it only if the CLI accepts it; it is stored beside the node identity, given to the CLI on each run and never shown again. An API key (`sk-ant-api…`) works too.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| `GET` | `/api/external-agents/connections` | — | `{"claude": {"connected": true, "source": "dashboard", "hint": "sk-ant-oat01-…AAAA"}}`; `source` is `dashboard` or `environment`; `{"connected": false}` when there is none |
+| `POST` | `/api/external-agents/connections/claude` | `{"token": "…"}` | The same view; `422` with the reason if Claude Code does not accept the token |
+| `DELETE` | `/api/external-agents/connections/claude` | — | The same view, now disconnected |
+
+All three are administrator-only.
+
+**Chatting with it.** Name it in `model` (see *Agents as models*), with or without streaming:
+
+```bash
+AGENT=$(curl -s $SWARM_URL/v1/models -H "$AUTH" | jq -r '.data[] | select(.agent.name=="Claude") | .id')   # agent/agent-…
+curl -s $SWARM_URL/v1/chat/completions -H "$AUTH" -H 'content-type: application/json' \
+  -d "{\"model\":\"$AGENT\",\"messages\":[{\"role\":\"user\",\"content\":\"Which orders are late?\"}]}"
+```
+
+- **Conversations.** Unlike Swarm models, an external agent keeps a conversation: `/v1/responses` accepts `conversation` (text or `{"id"}`) and `previous_response_id`, and the response `id` names the conversation, so the calls of one job continue the CLI's own session (it remembers earlier images, answers and reasoning). `/v1/chat/completions` takes `conversation_id`. These API chats are not listed in the dashboard.
+- **Tools.** `tools` does not define tools here; it **selects** which of the agent's tools the CLI may use in that request, by name (the tool's name, or `server__tool`). Without `tools` it may use all of them; `tool_choice: "none"` none (the CLI does not even connect to the MCP servers); a named function in `tool_choice`, only that one. An unknown name answers `400` with `code: "unknown_tool"` and the list of available tools. Unselected tools cannot be run.
+- **Structured output.** `response_format` (chat) and `text.format` (Responses) work: Swarm puts the schema at the end of the user's message, takes the JSON from the answer (whole, in a ```json block or between text), validates it against the schema and, if it does not fit, asks once for a correction.
+- **Images and files** sent in the request reach the CLI, and the agent can delegate to other agents with `ask_agent`.
+
+**What it consumed.** The `usage` of the answer is real: `prompt_tokens` (input plus cache reads and writes), `completion_tokens`, `total_tokens`, `prompt_tokens_details.cached_tokens` and `completion_tokens_details.reasoning_tokens`. With `stream: true` it arrives in the last chunk, which has no `choices`, when you send `stream_options.include_usage`. `dafo_swarm.usage` adds the detail:
+
+```json
+"dafo_swarm": { "usage": {
+  "cli": "claude", "input_tokens": 1200, "cache_read_tokens": 18000, "cache_write_tokens": 0,
+  "output_tokens": 340, "reasoning_tokens": 0,
+  "cost_usd": 0.042, "cost_is_list_price": true,
+  "models": { "claude-opus-4-1": { "input_tokens": 1200, "output_tokens": 340, "cost_usd": 0.042 } },
+  "rate_limits": [ { "window": "five_hour", "used_percent": 85.4, "resets_at": 1790420000, "warning": true },
+                   { "window": "seven_day", "used_percent": 20.0, "resets_at": 1790900000, "warning": false } ] } }
+```
+
+`rate_limits` are the usage windows of the CLI's plan: `five_hour` and `seven_day` for Claude, windows named by their length (`300min`, `10080min`) for Codex. `used_percent` is how full each is, `resets_at` is Unix seconds, and `warning` is true from 80 %, so a caller can switch agent before one runs out. `cost_usd` is at API list prices; with a subscription it is not what is charged. Values above are illustrative. `GET /api/external-agents/usage` (administrator) returns the latest windows of each CLI and the totals of the last 30 days: `{"limits": {"<cli>": {"seen_at", "windows": […]}}, "warning_percent": 80, "agents": [{"cli", "agent_id", "totals"}], "days": [{"day", "totals"}]}`, where `totals` has `requests`, `failed_requests`, the token counts and `cost_usd`. A window that has reset since counts as empty.
+
 ---
 
 ## 6. Knowledge base
@@ -565,7 +623,7 @@ The `/v1` endpoints return OpenAI-style errors:
 | Status | `code` values | Meaning |
 |---|---|---|
 | `200` | — | Success. With `stream: true`, a later failure arrives inside the stream |
-| `400` | `invalid_json`, `invalid_value`, `invalid_messages`, `invalid_input`, `invalid_tools`, `invalid_schema`, `invalid_image`, `invalid_file`, `unsupported_file`, `file_too_large`, `unsupported_capability`, `invalid_agent`, `context_length_exceeded`, `context_length_exceeded_after_tool_calls` | The request is wrong, too long for the model's context, or asks for something the model cannot do |
+| `400` | `invalid_json`, `invalid_value`, `invalid_messages`, `invalid_input`, `invalid_tools`, `unknown_tool`, `invalid_schema`, `invalid_image`, `invalid_file`, `unsupported_file`, `file_too_large`, `unsupported_capability`, `invalid_agent`, `context_length_exceeded`, `context_length_exceeded_after_tool_calls` | The request is wrong, too long for the model's context, or asks for something the model cannot do |
 | `401` | `unauthorized` | Missing or invalid API token |
 | `403` | `unauthorized`, `forbidden` | The user may not do this |
 | `404` | `model_not_found`, `file_not_found` | Unknown `model` or `file_id` |
@@ -589,6 +647,6 @@ The `/api` endpoints return a plain-text or `{"error": "…"}` body with the sta
 - **Context.** Long dashboard chats are summarised automatically before they exceed the memory of the nodes. API clients should keep conversations within the model's context.
 - **Request size.** 64 MiB per request body; 20 MiB per image or file; 4 MiB of extracted text per text file.
 - **Tool calls.** `/v1/responses` stops after `max_tool_calls` (default 16) tool calls in one request.
-- **No server-side conversation state.** Send the whole history on every request; `previous_response_id` and `store` are ignored.
+- **No server-side conversation state.** Send the whole history on every request; `previous_response_id` and `store` are ignored for Swarm models and agents. External agents (section 5.1) are the exception: their CLI keeps the conversation.
 - **Unsupported.** `n > 1`; embeddings, audio, image generation, moderation and batch endpoints; function tools in `/v1/responses`; `file` parts in chat completions; streaming `/v1/responses` with an agent linked from another swarm (`400`, `unsupported_capability`).
 - **Knowledge scope.** The knowledge base lives on the coordinator and is not replicated to other nodes.
